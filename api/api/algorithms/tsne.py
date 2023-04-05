@@ -18,7 +18,7 @@ class TSNEREMOTE(BaseAlgorithm):
         args['perplexity'] = utils.get_param_as_float(req, 'perplexity', 30.0)
         args['early_exaggeration'] = utils.get_param_as_float(req, 'early_exaggeration', 12.0)
         args['metric'] = utils.get_param_as_string(req, 'metric', 'euclidean')
-        args['learning_rate'] = utils.get_param_as_float(req, 'learning_rate', '200.0')
+        args['learning_rate'] = utils.get_param_as_float(req, 'learning_rate', 200.0)
         args['n_iter'] = utils.get_param_as_int(req, 'n_iter', 1000)
         args['init'] = utils.get_param_as_string(req, 'init', 'pca')
         return args
@@ -33,7 +33,7 @@ class TSNEREMOTE(BaseAlgorithm):
         learning_rate = args['learning_rate']
         n_iter = args['n_iter']
         metric = args['metric']
-        init = args['init']
+        init = args['init'].lower() # We're picky about the case for this
         data = args['json_data']
 
         df = utils.get_matrix(data)
@@ -43,12 +43,18 @@ class TSNEREMOTE(BaseAlgorithm):
         # We need to drop any NaNs
         df = df.dropna()
 
-        data = df[columns[1:]].values # skip over the label and just pull the data
-        tsne = TSNE(n_components=2, perplexity=perplexity,early_exaggeration=early_ex, learning_rate=learning_rate,
-                    metric=metric, init=init, n_jobs=10)
-        embedding = tsne.fit_transform(data)
+        data = df.values
+        try:
+          tsne = TSNE(n_components=2, perplexity=perplexity,early_exaggeration=early_ex, learning_rate=learning_rate,
+                      metric=metric, init=init, n_jobs=10)
+          embedding = tsne.fit_transform(data)
+        except Exception as e:
+          exc = utils.parse_sklearn_exception(repr(e))
+          status['status'] = 'error'
+          status['message'] = exc
+          return
 
-        #print(str(embedding))
+        # print(str(embedding))
 
         result_df = pd.DataFrame(embedding, columns=['x','y'])
         result_df.insert(0,"Node",row_labels)
@@ -60,6 +66,8 @@ class TSNEREMOTE(BaseAlgorithm):
           result_list.append(row[1:])
 
         result['embedding'] = result_list
+
+        # print(str(result_list))
 
         status['status'] = 'done'
 

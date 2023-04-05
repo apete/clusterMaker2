@@ -137,7 +137,10 @@ public class ClusterJobExecutionService implements CyJobExecutionService {
 	public CyJobStatus checkJobStatus(CyJob job) {
 		if (job instanceof ClusterJob) {
 			JSONObject result = handleCommand((ClusterJob)job, Command.CHECK, null);
-			return getStatus(result, null);
+			CyJobStatus status = getStatus(result, null);
+      if (status.getStatus() == Status.ERROR)
+        logger.error("Job "+job.getJobId()+" experienced and error: "+status.getMessage());
+      return status;
 		}
 		return new CyJobStatus(Status.ERROR, "CyJob is not a ClusterJob");
 	}
@@ -228,6 +231,7 @@ public class ClusterJobExecutionService implements CyJobExecutionService {
 	      st == Status.CANCELED ||
 	      st == Status.FAILED ||
 	      st == Status.TERMINATED ||
+	      st == Status.ERROR ||
 	      st == Status.PURGED)
 	        return true;
 	    return false;
@@ -264,17 +268,23 @@ public class ClusterJobExecutionService implements CyJobExecutionService {
 	//returns a list of NodeCluster objects that have a number and a list of nodes belonging to it
 	public static List<NodeCluster> createClusters(CyJobData data, String clusterAttributeName, CyNetwork network) {
 		JSONArray partitions = (JSONArray) data.get("partitions");
+    // System.out.println("Found "+partitions.size()+" partitions");
+
+    // Build a map of node names
+    Map<String, CyNode> nodeNameMap = new HashMap<>();
+    for (CyNode cyNode: network.getNodeList()) {
+      String name = network.getRow(cyNode).get(CyNetwork.NAME, String.class);
+      nodeNameMap.put(name, cyNode);
+    }
 		
 		List<NodeCluster> nodeClusters = new ArrayList<>();
 		int i = 1; //each cluster is assigned a number
 		for (Object partition : partitions) {
+      // System.out.println("Cluster "+i);
 			List<String> cluster = (ArrayList<String>) partition;
 			List<CyNode> cyNodes = new ArrayList<>();
 			for (String nodeName : cluster) {
-				for (CyNode cyNode : network.getNodeList())
-					if (network.getRow(cyNode).get(CyNetwork.NAME, String.class).equals(nodeName)) {
-						cyNodes.add(cyNode);
-					}
+        cyNodes.add(nodeNameMap.get(nodeName));
 			}
 
 			NodeCluster nodeCluster = new NodeCluster(i, cyNodes);
@@ -334,12 +344,16 @@ public class ClusterJobExecutionService implements CyJobExecutionService {
 	//compare f ex "done" and map that to the status ENUM
 	//added return new CyJobStatus
 	private CyJobStatus getStatus(JSONObject obj, String message) {
-		if (obj.containsKey(STATUS)) {
+		if (obj.containsKey(ERROR)) {
+			return new CyJobStatus(Status.ERROR, (String)obj.get(ERROR));
+		} else if (obj.containsKey(STATUS)) {
 			Status status = Status.UNKNOWN;
 			if (obj.get(STATUS).equals("done")) {
 				status = Status.FINISHED;
 			} else if (obj.get(STATUS).equals("running")) {
 				status = Status.RUNNING;
+			} else if (obj.get(STATUS).equals("error")) {
+				status = Status.ERROR;
 			}
 			// Did we get any information about our status?
 			if (obj.containsKey(STATUS_MESSAGE)) {
@@ -348,8 +362,6 @@ public class ClusterJobExecutionService implements CyJobExecutionService {
 				return new CyJobStatus(status, message);
 			}
 			return new CyJobStatus(status, message);
-		} else if (obj.containsKey(ERROR)) {
-			return new CyJobStatus(Status.ERROR, (String)obj.get(ERROR));
 		}
 		return null;
 	}
@@ -366,7 +378,7 @@ public class ClusterJobExecutionService implements CyJobExecutionService {
 		
 		if (command == Command.CHECK) {
 			try {
-				response = RemoteServer.fetchJSON(job.getBasePath() + "status/" + job.getJobId(), command);
+				response = RemoteServer.fetchJSON(job.getBasePath() + "status2/" + job.getJobId(), command);
 			} catch (Exception e) {
 				System.out.println("Exception in fetchJSON: " + e.getMessage());
 			}
@@ -380,6 +392,7 @@ public class ClusterJobExecutionService implements CyJobExecutionService {
 		}
 		
 		// System.out.println("FetchJSON: " + response + "/nmessage: ");
+    System.out.println("handleCommand: "+response);
 		return response;
 	}
 

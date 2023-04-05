@@ -40,6 +40,7 @@ import edu.ucsf.rbvi.clusterMaker2.internal.utils.remoteUtils.ClusterJobDataServ
 import edu.ucsf.rbvi.clusterMaker2.internal.utils.remoteUtils.ClusterJobExecutionService;
 import edu.ucsf.rbvi.clusterMaker2.internal.utils.remoteUtils.RemoteServer;
 import edu.ucsf.rbvi.clusterMaker2.internal.utils.remoteUtils.ClusterJobHandler;
+import edu.ucsf.rbvi.clusterMaker2.internal.utils.remoteUtils.NetworkClusterJobHandler;
 
 public class Infomap extends AbstractNetworkClusterer {
 	public static String NAME = "Infomap (remote)";
@@ -108,7 +109,7 @@ public class Infomap extends AbstractNetworkClusterer {
 		jobData = dataService.addData(jobData, "edges", edgeArray);
 		job.storeClusterData(clusterAttributeName, currentNetwork, clusterManager, createGroups, GROUP_ATTRIBUTE, null, getShortName());
 				// Create our handler
-		ClusterJobHandler jobHandler = new ClusterJobHandler(job, network);
+		NetworkClusterJobHandler jobHandler = new NetworkClusterJobHandler(job, network, context.vizProperties.showUI, context.vizProperties.restoreEdges);
 		job.setJobMonitor(jobHandler);	
 				// Submit the job
 		CyJobStatus exStatus = executionService.executeJob(job, basePath, configuration, jobData);
@@ -123,8 +124,9 @@ public class Infomap extends AbstractNetworkClusterer {
 			CyJobManager manager = registrar.getService(CyJobManager.class);
 			manager.addJob(job, jobHandler, 5); //this one shows the load button
 			
-		} else if (status == Status.ERROR 
-				|| status == Status.UNKNOWN  
+		} else if (status == Status.ERROR) {
+			monitor.showMessage(TaskMonitor.Level.ERROR, "Job error: " + exStatus.getMessage());
+    } else if (status == Status.UNKNOWN  
 				|| status == Status.CANCELED 
 				|| status == Status.FAILED
 				|| status == Status.TERMINATED 
